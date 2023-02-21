@@ -115,3 +115,220 @@ mode ： 将要创建的 FILE 结构体指针的模式信息
 */
 ```
 
+desto.c程序：
+
+```c
+#include <stdio.h>
+#include <fcntl.h>
+
+int main()
+{
+    FILE *fp;
+    int fd = open("data.dat", O_WRONLY | O_CREAT | O_TRUNC); //创建文件并返回文件描述符
+    if (fd == -1)
+    {
+        fputs("file open error", stdout);
+        return -1;
+    }
+    fp = fdopen(fd, "w"); //返回 写 模式的 FILE 指针
+    fputs("NetWork C programming \n", fp);
+    fclose(fp);
+    return 0;
+}
+```
+
+编译运行：
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/5c3b214d38ce4ed6848f3041e41a647f.png)
+
+文件描述符转换为 FILE 指针，并可以通过该指针调用标准 I/O 函数。
+
+#### 15.2.2 利用 fileno 函数转换为文件描述符
+
+函数原型如下：
+
+```c
+#include <stdio.h>
+int fileno(FILE *stream);
+/*
+成功时返回文件描述符，失败时返回 -1
+*/
+```
+
+todes.c 程序：
+
+```c
+#include <stdio.h>
+#include <fcntl.h>
+
+int main()
+{
+    FILE *fp;
+    int fd = open("data.dat", O_WRONLY | O_CREAT | O_TRUNC);
+    if (fd == -1)
+    {
+        fputs("file open error");
+        return -1;
+    }
+
+    printf("First file descriptor : %d \n", fd);
+    fp = fdopen(fd, "w"); //转成 file 指针
+    fputs("TCP/IP SOCKET PROGRAMMING \n", fp);
+    printf("Second file descriptor: %d \n", fileno(fp)); //转回文件描述符
+    fclose(fp);
+    return 0;
+}
+```
+
+### 15.3 基于套接字的标准 I/O 函数使用
+
+把第四章的回声客户端和回声服务端的内容改为基于标准 I/O 函数的数据交换形式。
+
+代码如下：
+
+echo_client.c 程序：
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+#define BUF_SIZE 1024
+void error_handling(char *message);
+
+int main(int argc, char *argv[])
+{
+    int sock;
+    char message[BUF_SIZE];
+    int str_len;
+    struct sockaddr_in serv_adr;
+    FILE *readfp;
+    FILE *writefp;
+    if (argc != 3)
+    {
+        printf("Usage : %s <IP> <port>\n", argv[0]);
+        exit(1);
+    }
+
+    sock = socket(PF_INET, SOCK_STREAM, 0);
+    if (sock == -1)
+        error_handling("socket() error");
+
+    memset(&serv_adr, 0, sizeof(serv_adr));
+    serv_adr.sin_family = AF_INET;
+    serv_adr.sin_addr.s_addr = inet_addr(argv[1]);
+    serv_adr.sin_port = htons(atoi(argv[2]));
+
+    if (connect(sock, (struct sockaddr *)&serv_adr, sizeof(serv_adr)) == -1)
+        error_handling("connect() error!");
+    else
+        puts("Connected...........");
+    readfp = fdopen(sock, "r");
+    writefp = fdopen(sock, "w");
+    while (1)
+    {
+        fputs("Input message(Q to quit): ", stdout);
+        fgets(message, BUF_SIZE, stdin);
+
+        if (!strcmp(message, "q\n") || !strcmp(message, "Q\n"))
+            break;
+
+        fputs(message, writefp);
+        fflush(writefp);
+        fgets(message, BUF_SIZE, readfp);
+        printf("Message from server: %s", message);
+    }
+    fclose(writefp);
+    fclose(readfp);
+    return 0;
+}
+
+void error_handling(char *message)
+{
+    fputs(message, stderr);
+    fputc('\n', stderr);
+    exit(1);
+}
+```
+
+echo_stdserv.c 程序：
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+#define BUF_SIZE 1024
+void error_handling(char *message);
+
+int main(int argc, char *argv[])
+{
+    int serv_sock, clnt_sock;
+    char message[BUF_SIZE];
+    int str_len, i;
+
+    struct sockaddr_in serv_adr, clnt_adr;
+    socklen_t clnt_adr_sz;
+    FILE *readfp;
+    FILE *writefp;
+
+    if (argc != 2)
+    {
+        printf("Usage : %s <port>\n", argv[0]);
+        exit(1);
+    }
+
+    serv_sock = socket(PF_INET, SOCK_STREAM, 0);
+    if (serv_sock == -1)
+        error_handling("socket() error");
+
+    memset(&serv_adr, 0, sizeof(serv_adr));
+    serv_adr.sin_family = AF_INET;
+    serv_adr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serv_adr.sin_port = htons(atoi(argv[1]));
+
+    if (bind(serv_sock, (struct sockaddr *)&serv_adr, sizeof(serv_adr)) == -1)
+        error_handling("bind() error");
+
+    if (listen(serv_sock, 5) == -1)
+        error_handling("listen() error");
+
+    clnt_adr_sz = sizeof(clnt_adr);
+    //调用 5 次 accept 函数，共为 5 个客户端提供服务
+    for (i = 0; i < 5; i++)
+    {
+        clnt_sock = accept(serv_sock, (struct sockaddr *)&clnt_adr, &clnt_adr_sz);
+        if (clnt_sock == -1)
+            error_handling("accept() error");
+        else
+            printf("Connect client %d \n", i + 1);
+
+        readfp = fdopen(clnt_sock, "r");
+        writefp = fdopen(clnt_sock, "w");
+        while (!feof(readfp))
+        {
+            fgets(message, BUF_SIZE, readfp);
+            fputs(message, writefp);
+            fflush(writefp);
+        }
+
+        fclose(readfp);
+        fclose(writefp);
+    }
+    close(serv_sock);
+    return 0;
+}
+
+void error_handling(char *message)
+{
+    fputs(message, stderr);
+    fputc('\n', stderr);
+    exit(1);
+}
+```

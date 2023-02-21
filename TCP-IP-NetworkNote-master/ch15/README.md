@@ -106,7 +106,7 @@ cat data.dat
 函数原型如下：
 
 ```c
-#include <stdio.h>
+#include <stdio.h> 
 int fileno(FILE *stream);
 /*
 成功时返回文件描述符，失败时返回 -1
