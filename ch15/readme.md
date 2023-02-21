@@ -19,3 +19,99 @@
 ![](https://i.loli.net/2019/01/29/5c500e53ad9aa.png)
 
 假设使用 fputs 函数进行传输字符串 「Hello」时，首先将数据传递到标准 I/O 缓冲，然后将数据移动到套接字输出缓冲，最后将字符串发送到对方主机。
+
+设置缓冲的主要目的是为了提高性能。从以下两点可以说明性能的提高：
+
+- 传输的数据量
+- 数据向输出缓冲移动的次数。
+
+比较 1 个字节的数据发送 10 次的情况和 10 个字节发送 1 次的情况。发送数据时，数据包中含有头信息。头信与数据大小无关，是按照一定的格式填入的。假设头信息占 40 个字节，需要传输的数据量也存在较大区别：
+
+- 1 个字节 10 次：40*10=400 字节
+- 10个字节 1 次：40*1=40 字节。
+
+#### 15.1.2 标准 I/O 函数和系统函数之间的性能对比
+
+下面是利用系统函数的示例：
+
+syscpy.c 程序：
+
+```c
+#include <stdio.h>
+#include <fcntl.h>
+#define BUF_SIZE 3
+
+int main(int argc, char *argv[])
+{
+    int fd1, fd2;
+    int len;
+    char buf[BUF_SIZE];
+
+    fd1 = open("news.txt", O_RDONLY);
+    fd2 = open("cpy.txt", O_WRONLY | O_CREAT | O_TRUNC);
+
+    while ((len = read(fd1, buf, sizeof(buf))) > 0)
+        write(fd2, buf, len);
+
+    close(fd1);
+    close(fd2);
+
+    return 0;
+}
+
+```
+
+如果是采用上述代码，数据传输的时间需要很长
+
+下面采用标准I/O函数复制文件
+
+stdcpy.c 程序：
+
+```c
+#include <stdio.h>
+#define BUF_SZIE 3
+
+int main(int argc, char *argv[])
+{
+    FILE *fp1;
+    FILE *fp2;
+    char buf[BUF_SZIE];
+
+    fp1 = open("news.txt", "r");
+    fp2 = open("cpy.txt", "w");
+
+    while (fgets(buf, BUF_SZIE, fp1) != NULL)
+        fputs(buf, fp2);
+    fclose(fp1);
+    fclose(fp2);
+    return 0;
+}
+```
+
+#### 15.1.3 标准 I/O 函数的几个缺点
+
+标准 I/O 函数存在以下几个缺点：
+
+- 不容易进行双向通信
+- 有时可能频繁调用 fflush 函数
+- 需要以 FILE 结构体指针的形式返回文件描述符。
+
+打开文件时，如果希望同时进行读操作，则应以 r+、w+、a+ 模式打开。
+但因为缓冲的缘故，每次切换读写工作状态时应调用fIush为数。这也会影响基于缓冲的性能提高。
+
+### 15.2 使用标准 I/O 函数
+
+#### 15.2.1 利用 fdopen 函数转换为 FILE 结构体指针
+
+函数原型如下：
+
+```c
+#include <stdio.h>
+FILE *fdopen(int fildes, const char *mode);
+/*
+成功时返回转换的 FILE 结构体指针，失败时返回 NULL
+fildes ： 需要转换的文件描述符
+mode ： 将要创建的 FILE 结构体指针的模式信息
+*/
+```
+
